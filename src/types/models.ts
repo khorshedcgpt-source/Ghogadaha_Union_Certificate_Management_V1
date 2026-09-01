@@ -47,6 +47,14 @@ export interface Ward {
   updatedAt: string
 }
 
+export interface Village {
+  id: string
+  wardNumber: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CertificateSnapshot {
   id: string
   certificateType: string

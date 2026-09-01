@@ -4,6 +4,7 @@ import type {
   CertificateSnapshot,
   Person,
   UnionSettings,
+  Village,
   Ward,
 } from '../types/models'
 
@@ -37,6 +38,7 @@ class UnionCertificateDatabase extends Dexie {
   settings!: Table<UnionSettings, 'primary'>
   persons!: Table<Person, string>
   wards!: Table<Ward, string>
+  villages!: Table<Village, string>
   certificateSnapshots!: Table<CertificateSnapshot, string>
 
   constructor() {
@@ -46,6 +48,7 @@ class UnionCertificateDatabase extends Dexie {
       settings: '&id',
       persons: '&id, status, mobile, ward, village, createdAt, updatedAt',
       wards: '&id, wardNumber',
+      villages: '&id, wardNumber, name',
       certificateSnapshots: '&id, certificateType, certificateDate, createdAt, updatedAt',
     })
   }
@@ -71,8 +74,24 @@ export async function setSettings(settings: UnionSettings): Promise<void> {
   await db.settings.put(settings)
 }
 
+export async function saveWards(wards: Ward[]): Promise<void> {
+  await db.wards.bulkPut(wards)
+}
+
 export async function listWards(): Promise<Ward[]> {
   return db.wards.orderBy('wardNumber').toArray()
+}
+
+export async function listVillages(): Promise<Village[]> {
+  return db.villages.orderBy('wardNumber').toArray()
+}
+
+export async function saveVillage(village: Village): Promise<void> {
+  await db.villages.put(village)
+}
+
+export async function deleteVillage(id: string): Promise<void> {
+  await db.villages.delete(id)
 }
 
 export async function listPersons(): Promise<Person[]> {

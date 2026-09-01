@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 type NavItem = {
   label: string
   active?: boolean
@@ -6,17 +8,19 @@ type NavItem = {
 interface AppShellProps {
   isDbReady: boolean
   dbStatus: string
+  activeItem?: string
+  children?: ReactNode
 }
 
 const navItems: NavItem[] = [
-  { label: 'ড্যাশবোর্ড', active: true },
+  { label: 'ড্যাশবোর্ড' },
   { label: 'নতুন সনদ' },
   { label: 'প্রাথমিক সেভ' },
   { label: 'চূড়ান্ত সেভ' },
   { label: 'অনুসন্ধান' },
   { label: 'সনদ ইতিহাস' },
   { label: 'ব্যাকআপ' },
-  { label: 'সেটিংস' },
+  { label: 'সেটিংস', active: true },
 ]
 
 const dashboardCards = [
@@ -26,7 +30,9 @@ const dashboardCards = [
   { title: 'সারাংশ', value: '৯+', note: 'ওয়ার্ড কনফিগারেশন' },
 ]
 
-export function AppShell({ isDbReady, dbStatus }: AppShellProps) {
+export function AppShell({ isDbReady, dbStatus, activeItem, children }: AppShellProps) {
+  const resolvedActiveItem = activeItem ?? 'সেটিংস'
+
   return (
     <div className="app-shell min-h-screen bg-slate-100 text-slate-800">
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur-sm">
@@ -64,7 +70,7 @@ export function AppShell({ isDbReady, dbStatus }: AppShellProps) {
                 type="button"
                 className={[
                   'flex w-full items-center justify-between rounded-xl border px-4 py-3 text-right text-base font-medium transition',
-                  item.active
+                  resolvedActiveItem === item.label
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800 shadow-sm'
                     : 'border-transparent bg-slate-50 text-slate-700 hover:border-slate-200 hover:bg-slate-100',
                 ].join(' ')}
@@ -80,7 +86,7 @@ export function AppShell({ isDbReady, dbStatus }: AppShellProps) {
           <div className="mb-6 flex items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div>
               <p className="text-sm font-medium text-slate-500">নির্বাচিত ফাংশন</p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-900">ড্যাশবোর্ড</h2>
+              <h2 className="mt-1 text-2xl font-bold text-slate-900">{resolvedActiveItem}</h2>
             </div>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
               অনলাইন নেই • অফলাইন মোড
@@ -101,15 +107,7 @@ export function AppShell({ isDbReady, dbStatus }: AppShellProps) {
             ))}
           </section>
 
-          <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
-            <h3 className="text-xl font-bold text-slate-900">ফাউন্ডেশন স্ট্যাটাস</h3>
-            <ul className="mt-4 space-y-3 text-base text-slate-700">
-              <li>• React + TypeScript + Vite ভিত্তিক সিস্টেম প্রস্তুত</li>
-              <li>• IndexedDB + Dexie ডাটাবেস লেয়ারের基础</li>
-              <li>• Bangla UI shell, নেভিগেশন, এবং রেসপন্সিভ লেআউট</li>
-              <li>• সমগ্র অ্যাপ্লিকেশন অফলাইন-ফার্স্টভাবে চলবে</li>
-            </ul>
-          </section>
+          <div className="mt-8">{children}</div>
         </main>
       </div>
     </div>
