@@ -2,26 +2,42 @@ import { useEffect, useState } from 'react'
 
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { SettingsPage } from './components/SettingsPage'
+import { PersonManagement } from './components/PersonManagement'
 import {
-  DEFAULT_UNION_SETTINGS,
   DEFAULT_WARDS,
+  clearTemporaryPersons,
   db,
+  deletePerson,
   initializeDatabase,
-  saveVillage,
-  saveWards,
-  setSettings,
+  listTemporaryPersons,
+  savePerson,
 } from './db'
-import type { UnionSettings, Village, Ward } from './types/models'
+import type { Person, Village, Ward } from './types/models'
+
+const createEmptyPerson = (): Person => ({
+  id: crypto.randomUUID(),
+  name: '',
+  fatherOrHusbandName: '',
+  motherName: '',
+  nidOrBirthRegistration: '',
+  photo: null,
+  ward: 1,
+  village: '',
+  mobile: '',
+  relation: 'own',
+  status: 'temporary',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+})
 
 function App() {
   const [isDbReady, setIsDbReady] = useState(false)
   const [dbStatus, setDbStatus] = useState('ডাটাবেস শুরু হচ্ছে...')
-  const [settings, setSettingsState] = useState<UnionSettings>(DEFAULT_UNION_SETTINGS)
   const [wards, setWards] = useState<Ward[]>(DEFAULT_WARDS)
   const [villages, setVillages] = useState<Village[]>([])
-  const [savingSettings, setSavingSettings] = useState(false)
-  const [savingWards, setSavingWards] = useState(false)
+  const [draft, setDraft] = useState<Person>(createEmptyPerson())
+  const [temporaryPersons, setTemporaryPersons] = useState<Person[]>([])
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -34,15 +50,15 @@ function App() {
           return
         }
 
-        const [settingsRecord, wardRecord, villageRecord] = await Promise.all([
-          db.settings.get('primary'),
+        const [wardRecord, villageRecord, temporaryRecord] = await Promise.all([
           db.wards.orderBy('wardNumber').toArray(),
           db.villages.orderBy('wardNumber').toArray(),
+          listTemporaryPersons(),
         ])
 
-        setSettingsState(settingsRecord ?? DEFAULT_UNION_SETTINGS)
         setWards(wardRecord.length ? wardRecord : DEFAULT_WARDS)
         setVillages(villageRecord)
+        setTemporaryPersons(temporaryRecord)
         setIsDbReady(true)
         setDbStatus('IndexedDB প্রস্তুত')
       } catch (error) {
@@ -64,74 +80,82 @@ function App() {
     }
   }, [])
 
-  const handleSaveSettings = async () => {
-    const nextValue = {
-      ...settings,
-      updatedAt: new Date().toISOString(),
-    }
-
-    setSavingSettings(true)
-
-    try {
-      await setSettings(nextValue)
-      setSettingsState(nextValue)
-    } finally {
-      setSavingSettings(false)
-    }
-  }
-
-  const handleSaveWards = async () => {
-    const normalized = wards.map((ward) => ({
-      ...ward,
-      wardNumber: ward.wardNumber,
-      memberName: ward.memberName.trim(),
+  const handleDraftChange = (updates: Partial<Person>) => {
+    setDraft((current) => ({
+      ...current,
+      ...updates,
       updatedAt: new Date().toISOString(),
     }))
-
-    setSavingWards(true)
-
-    try {
-      await saveWards(normalized)
-      setWards(normalized)
-    } finally {
-      setSavingWards(false)
-    }
+    setErrorMessage('')
   }
 
-  const handleSaveVillage = async (village: Village) => {
-    const payload = {
-      ...village,
-      name: village.name.trim(),
+  const handleSaveTemporary = async () => {
+    const trimmedName = draft.name.trim()
+    const trimmedFather = draft.fatherOrHusbandName.trim()
+
+    if (!trimmedName || !trimmedFather) {
+      setErrorMessage('নাম এবং পিতা/স্বামীর নাম অবশ্যই দিতে হবে।')
+      return
+    }
+
+    const nextPerson: Person = {
+      ...draft,
+      id: draft.id || crypto.randomUUID(),
+      name: trimmedName,
+      fatherOrHusbandName: trimmedFather,
+      motherName: draft.motherName?.trim() ?? '',
+      nidOrBirthRegistration: draft.nidOrBirthRegistration?.trim() ?? '',
+      village: draft.village?.trim() ?? '',
+      status: 'temporary',
       updatedAt: new Date().toISOString(),
     }
 
-    await saveVillage(payload)
-    setVillages((current) => {
-      const next = current.filter((item) => item.id !== payload.id)
-      return [...next, payload].sort((a, b) => a.wardNumber - b.wardNumber)
-    })
+    await savePerson(nextPerson)
+    const refreshed = await listTemporaryPersons()
+    setTemporaryPersons(refreshed)
+    setDraft(createEmptyPerson())
+    setErrorMessage('')
   }
 
-  const handleDeleteVillage = async (id: string) => {
-    await db.villages.delete(id)
-    setVillages((current) => current.filter((item) => item.id !== id))
+  const handleResume = (person: Person) => {
+    setDraft({
+      ...person,
+      motherName: person.motherName ?? '',
+      nidOrBirthRegistration: person.nidOrBirthRegistration ?? '',
+      village: person.village ?? '',
+      photo: person.photo ?? null,
+    })
+    setErrorMessage('')
+  }
+
+  const handleDelete = async (id: string) => {
+    await deletePerson(id)
+    setTemporaryPersons((current) => current.filter((person) => person.id !== id))
+    if (draft.id === id) {
+      setDraft(createEmptyPerson())
+    }
+  }
+
+  const handleClearAll = async () => {
+    await clearTemporaryPersons()
+    setTemporaryPersons([])
+    setDraft(createEmptyPerson())
   }
 
   return (
     <ErrorBoundary>
-      <AppShell isDbReady={isDbReady} dbStatus={dbStatus} activeItem="সেটিংস">
-        <SettingsPage
-          settings={settings}
+      <AppShell isDbReady={isDbReady} dbStatus={dbStatus} activeItem="ব্যক্তি তথ্য">
+        <PersonManagement
           wards={wards}
           villages={villages}
-          onSettingsChange={setSettingsState}
-          onSaveSettings={handleSaveSettings}
-          onSaveWards={handleSaveWards}
-          onSaveVillage={handleSaveVillage}
-          onDeleteVillage={handleDeleteVillage}
-          onWardChange={setWards}
-          savingSettings={savingSettings}
-          savingWards={savingWards}
+          draft={draft}
+          temporaryPersons={temporaryPersons}
+          errorMessage={errorMessage}
+          onDraftChange={handleDraftChange}
+          onSaveTemporary={handleSaveTemporary}
+          onResume={handleResume}
+          onDelete={handleDelete}
+          onClearAll={handleClearAll}
         />
       </AppShell>
     </ErrorBoundary>

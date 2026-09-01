@@ -103,6 +103,27 @@ export async function savePerson(person: Person): Promise<string> {
   return person.id
 }
 
+export async function listTemporaryPersons(): Promise<Person[]> {
+  return db.persons.where('status').equals('temporary').reverse().sortBy('updatedAt')
+}
+
+export async function getPersonById(id: string): Promise<Person | undefined> {
+  return db.persons.get(id)
+}
+
+export async function deletePerson(id: string): Promise<void> {
+  await db.persons.delete(id)
+}
+
+export async function clearTemporaryPersons(): Promise<void> {
+  const temporaryPersons = await db.persons.where('status').equals('temporary').toArray()
+  if (temporaryPersons.length === 0) {
+    return
+  }
+
+  await db.persons.bulkDelete(temporaryPersons.map((person) => person.id))
+}
+
 export async function saveSnapshot(snapshot: CertificateSnapshot): Promise<string> {
   await db.certificateSnapshots.put(snapshot)
   return snapshot.id
