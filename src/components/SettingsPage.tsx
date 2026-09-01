@@ -1,4 +1,5 @@
 import type { UnionSettings, Village, Ward } from '../types/models'
+import { BackupRestorePanel } from './BackupRestorePanel'
 import { UnionSettingsForm } from './UnionSettingsForm'
 import { VillageManagement } from './VillageManagement'
 import { WardManagement } from './WardManagement'
@@ -52,6 +53,8 @@ export function SettingsPage({
         onSaveVillage={onSaveVillage}
         onDeleteVillage={onDeleteVillage}
       />
+
+      <BackupRestorePanel />
     </div>
   )
 }

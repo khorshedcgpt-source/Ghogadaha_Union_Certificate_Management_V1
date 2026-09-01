@@ -76,6 +76,35 @@ export interface CertificateSnapshot {
   updatedAt: string
 }
 
+export interface FamilyIdentityMapping {
+  id: string
+  personId: string
+  mobile: string
+  familyIdentity: string
+  relation: RelationType
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TemplateVersion {
+  id: string
+  code: string
+  version: string
+  name: string
+  content: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface QrPayloadRecord {
+  id: string
+  certificateType: string
+  payload: string
+  data: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UnionSettings {
   id: 'primary'
   unionName: string

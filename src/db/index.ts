@@ -2,7 +2,10 @@ import Dexie, { type Table } from 'dexie'
 
 import type {
   CertificateSnapshot,
+  FamilyIdentityMapping,
   Person,
+  QrPayloadRecord,
+  TemplateVersion,
   UnionSettings,
   Village,
   Ward,
@@ -39,7 +42,10 @@ class UnionCertificateDatabase extends Dexie {
   persons!: Table<Person, string>
   wards!: Table<Ward, string>
   villages!: Table<Village, string>
+  familyIdentityMappings!: Table<FamilyIdentityMapping, string>
   certificateSnapshots!: Table<CertificateSnapshot, string>
+  templateVersions!: Table<TemplateVersion, string>
+  qrPayloads!: Table<QrPayloadRecord, string>
 
   constructor() {
     super('ghogadaha-union-certificate-db')
@@ -50,6 +56,17 @@ class UnionCertificateDatabase extends Dexie {
       wards: '&id, wardNumber',
       villages: '&id, wardNumber, name',
       certificateSnapshots: '&id, certificateType, certificateDate, createdAt, updatedAt',
+    })
+
+    this.version(2).stores({
+      settings: '&id',
+      persons: '&id, status, mobile, ward, village, createdAt, updatedAt',
+      wards: '&id, wardNumber',
+      villages: '&id, wardNumber, name',
+      familyIdentityMappings: '&id, personId, mobile, familyIdentity, createdAt, updatedAt',
+      certificateSnapshots: '&id, certificateType, certificateDate, createdAt, updatedAt',
+      templateVersions: '&id, code, version, createdAt, updatedAt',
+      qrPayloads: '&id, certificateType, createdAt, updatedAt',
     })
   }
 }
@@ -128,6 +145,46 @@ export async function listPermanentPersons(): Promise<Person[]> {
   return db.persons.where('status').equals('permanent').reverse().sortBy('updatedAt')
 }
 
+export async function listFamilyIdentityMappings(): Promise<FamilyIdentityMapping[]> {
+  const mappings = await db.familyIdentityMappings.orderBy('createdAt').reverse().toArray()
+  if (mappings.length > 0) {
+    return mappings
+  }
+
+  const persons = await db.persons.where('status').equals('permanent').toArray()
+  return persons
+    .filter((person) => person.mobile && person.familyIdentity)
+    .map((person) => ({
+      id: `${person.id}-family`,
+      personId: person.id,
+      mobile: person.mobile ?? '',
+      familyIdentity: person.familyIdentity ?? `${person.mobile ?? ''}-own`,
+      relation: person.relation ?? 'own',
+      createdAt: person.createdAt,
+      updatedAt: person.updatedAt,
+    }))
+}
+
+export async function saveFamilyIdentityMapping(mapping: FamilyIdentityMapping): Promise<void> {
+  await db.familyIdentityMappings.put(mapping)
+}
+
+export async function listTemplateVersions(): Promise<TemplateVersion[]> {
+  return db.templateVersions.orderBy('createdAt').reverse().toArray()
+}
+
+export async function saveTemplateVersion(templateVersion: TemplateVersion): Promise<void> {
+  await db.templateVersions.put(templateVersion)
+}
+
+export async function listQrPayloads(): Promise<QrPayloadRecord[]> {
+  return db.qrPayloads.orderBy('createdAt').reverse().toArray()
+}
+
+export async function saveQrPayload(record: QrPayloadRecord): Promise<void> {
+  await db.qrPayloads.put(record)
+}
+
 export async function findPermanentPersonsByMobile(mobile: string): Promise<Person[]> {
   const normalized = mobile.replace(/\D/g, '')
   if (!normalized) {
@@ -180,6 +237,18 @@ export async function savePermanentPerson(person: Person): Promise<{ saved: bool
   }
 
   await db.persons.put(finalPerson)
+
+  const familyIdentityMapping: FamilyIdentityMapping = {
+    id: `${finalPerson.id}-family`,
+    personId: finalPerson.id,
+    mobile: normalizedMobile,
+    familyIdentity: finalPerson.familyIdentity ?? `${normalizedMobile}-${relation}`,
+    relation,
+    createdAt: finalPerson.createdAt,
+    updatedAt: finalPerson.updatedAt,
+  }
+
+  await db.familyIdentityMappings.put(familyIdentityMapping)
   return { saved: true }
 }
 
