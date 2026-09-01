@@ -124,6 +124,65 @@ export async function clearTemporaryPersons(): Promise<void> {
   await db.persons.bulkDelete(temporaryPersons.map((person) => person.id))
 }
 
+export async function listPermanentPersons(): Promise<Person[]> {
+  return db.persons.where('status').equals('permanent').reverse().sortBy('updatedAt')
+}
+
+export async function findPermanentPersonsByMobile(mobile: string): Promise<Person[]> {
+  const normalized = mobile.replace(/\D/g, '')
+  if (!normalized) {
+    return []
+  }
+
+  const persons = await db.persons.where('status').equals('permanent').toArray()
+  return persons.filter((person) => (person.mobile ?? '').replace(/\D/g, '').includes(normalized))
+}
+
+export async function findPermanentPersonsByNid(nid: string): Promise<Person[]> {
+  const normalized = nid.trim().toLowerCase()
+  if (!normalized) {
+    return []
+  }
+
+  const persons = await db.persons.where('status').equals('permanent').toArray()
+  return persons.filter((person) => (person.nidOrBirthRegistration ?? '').trim().toLowerCase().includes(normalized))
+}
+
+export async function savePermanentPerson(person: Person): Promise<{ saved: boolean; reason?: string }> {
+  const relation = person.relation ?? 'own'
+  const normalizedMobile = (person.mobile ?? '').replace(/\D/g, '')
+  if (!normalizedMobile) {
+    return { saved: false, reason: 'মোবাইল নম্বর অবশ্যই দিতে হবে।' }
+  }
+
+  const existingPersons = await db.persons.where('status').equals('permanent').toArray()
+  const duplicate = existingPersons.some((existingPerson) => {
+    const sameMobile = (existingPerson.mobile ?? '').replace(/\D/g, '') === normalizedMobile
+    const sameRelation = (existingPerson.relation ?? 'own') === relation
+    return sameMobile && sameRelation && existingPerson.id !== person.id
+  })
+
+  if (duplicate) {
+    return {
+      saved: false,
+      reason: 'এই মোবাইল নম্বর ও সম্পর্কের জন্য একটি স্থায়ী রেকর্ড ইতিমধ্যে আছে।',
+    }
+  }
+
+  const finalPerson: Person = {
+    ...person,
+    id: person.id || crypto.randomUUID(),
+    mobile: normalizedMobile,
+    relation,
+    familyIdentity: `${normalizedMobile}-${relation}`,
+    status: 'permanent',
+    updatedAt: new Date().toISOString(),
+  }
+
+  await db.persons.put(finalPerson)
+  return { saved: true }
+}
+
 export async function saveSnapshot(snapshot: CertificateSnapshot): Promise<string> {
   await db.certificateSnapshots.put(snapshot)
   return snapshot.id

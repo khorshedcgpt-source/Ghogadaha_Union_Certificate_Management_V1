@@ -22,6 +22,7 @@ export interface Person {
   village?: string
   mobile?: string
   relation?: RelationType
+  familyIdentity?: string
   status: PersonStatus
   createdAt: string
   updatedAt: string
