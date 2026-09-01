@@ -13,8 +13,10 @@ export interface HeirRow {
   id: string
   name: string
   relationship: string
+  relationshipCustom?: string
   nidOrBirthRegistration?: string
   comment?: string
+  commentCustom?: string
 }
 
 export interface CertificateTemplateContext {
