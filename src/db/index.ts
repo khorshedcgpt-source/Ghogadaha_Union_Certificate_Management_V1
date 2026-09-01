@@ -183,7 +183,30 @@ export async function savePermanentPerson(person: Person): Promise<{ saved: bool
   return { saved: true }
 }
 
+export async function listSnapshots(): Promise<CertificateSnapshot[]> {
+  return db.certificateSnapshots.orderBy('createdAt').reverse().toArray()
+}
+
+export async function createImmutableSnapshot(snapshot: CertificateSnapshot): Promise<string> {
+  const immutableSnapshot: CertificateSnapshot = {
+    ...snapshot,
+    id: snapshot.id || crypto.randomUUID(),
+    createdAt: snapshot.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  await db.certificateSnapshots.put(immutableSnapshot)
+  return immutableSnapshot.id
+}
+
 export async function saveSnapshot(snapshot: CertificateSnapshot): Promise<string> {
-  await db.certificateSnapshots.put(snapshot)
-  return snapshot.id
+  const immutableSnapshot: CertificateSnapshot = {
+    ...snapshot,
+    id: snapshot.id || crypto.randomUUID(),
+    createdAt: snapshot.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  await db.certificateSnapshots.put(immutableSnapshot)
+  return immutableSnapshot.id
 }

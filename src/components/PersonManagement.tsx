@@ -4,7 +4,9 @@ import {
   DEFAULT_UNION_SETTINGS,
   findPermanentPersonsByMobile,
   findPermanentPersonsByNid,
+  listSnapshots,
   savePermanentPerson,
+  saveSnapshot,
 } from '../db'
 import { renderCertificate } from '../lib/certificateTemplates'
 import {
@@ -51,6 +53,8 @@ export function PersonManagement({
   const [searchNid, setSearchNid] = useState('')
   const [searchResults, setSearchResults] = useState<Record<string, Person[]>>({})
   const [searchMessage, setSearchMessage] = useState('')
+  const [historySnapshots, setHistorySnapshots] = useState<any[]>([])
+  const [historyPreview, setHistoryPreview] = useState<CertificateTemplateContext | null>(null)
   const [previewPerson, setPreviewPerson] = useState<Person | null>(null)
   const [previewContext, setPreviewContext] = useState<CertificateTemplateContext | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -172,6 +176,83 @@ export function PersonManagement({
   const closePreview = () => {
     setPreviewPerson(null)
     setPreviewContext(null)
+    setHistoryPreview(null)
+  }
+
+  const refreshHistory = async () => {
+    const snapshots = await listSnapshots()
+    setHistorySnapshots(snapshots)
+  }
+
+  useEffect(() => {
+    void refreshHistory()
+  }, [])
+
+  const buildSnapshotContext = (snapshot: any): CertificateTemplateContext => ({
+    person: snapshot.person,
+    settings: DEFAULT_UNION_SETTINGS,
+    selectedWard: wards.find((ward) => ward.wardNumber === snapshot.ward),
+    wardMemberName: snapshot.memberName,
+    certificateType: snapshot.certificateType,
+    certificateDate: snapshot.certificateDate,
+    smarakPrefix: snapshot.smarakPrefix,
+    smarakSerial: snapshot.smarakSerial ?? '0001',
+    qrPayload: snapshot.qrPayload,
+    qrDataUrl: '',
+    heirs: (snapshot.heirs ?? []).map((heir: any) => ({
+      id: heir.id ?? crypto.randomUUID(),
+      name: heir.name ?? '',
+      relationship: heir.relationship ?? 'পুত্র',
+      relationshipCustom: heir.relationshipCustom ?? '',
+      nidOrBirthRegistration: heir.nidOrBirthRegistration ?? '',
+      comment: heir.comment ?? '',
+      commentCustom: heir.commentCustom ?? '',
+    })),
+  })
+
+  const handleFinalizeSnapshot = async () => {
+    if (!previewContext) {
+      return
+    }
+
+    const snapshot = {
+      id: crypto.randomUUID(),
+      certificateType: previewContext.certificateType,
+      person: previewContext.person,
+      heirs: previewContext.heirs.map((heir) => ({
+        id: heir.id,
+        name: heir.name,
+        relationship: heir.relationship,
+        relationshipCustom: heir.relationshipCustom,
+        nidOrBirthRegistration: heir.nidOrBirthRegistration,
+        comment: heir.comment,
+        commentCustom: heir.commentCustom,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })),
+      ward: previewContext.person.ward ?? 1,
+      village: previewContext.person.village ?? '',
+      memberName: previewContext.wardMemberName ?? '',
+      chairmanName: previewContext.settings.chairmanName,
+      chairmanMobile: previewContext.settings.chairmanMobile,
+      certificateDate: previewContext.certificateDate,
+      smarakPrefix: previewContext.smarakPrefix,
+      smarakSerial: previewContext.smarakSerial,
+      templateVersion: 'v1.0.0',
+      qrPayload: previewContext.qrPayload,
+      configuration: {
+        unionName: previewContext.settings.unionName,
+        postOffice: previewContext.settings.postOffice,
+        upazila: previewContext.settings.upazila,
+        district: previewContext.settings.district,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    await saveSnapshot(snapshot)
+    await refreshHistory()
+    setSearchMessage('স্ন্যাপশট সফলভাবে সংরক্ষিত হয়েছে।')
   }
 
   const handleFinalSave = async () => {
@@ -484,6 +565,73 @@ export function PersonManagement({
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-500">সনদ ইতিহাস</p>
+            <h3 className="mt-1 text-2xl font-bold text-slate-900">ফাইনালাইজড স্ন্যাপশট</h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshHistory()}
+            className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            রিফ্রেশ
+          </button>
+        </div>
+
+        {historySnapshots.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">
+            এখনো কোন ফাইনালাইজড স্ন্যাপশট নেই।
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {historySnapshots.map((snapshot) => (
+              <div key={snapshot.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-base font-bold text-slate-900">{snapshot.person?.name || 'নাম অনুপস্থিত'}</p>
+                    <p className="text-sm text-slate-600">
+                      {snapshot.certificateType} • {snapshot.person?.village || 'গ্রাম অনুপস্থিত'} • {snapshot.certificateDate}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryPreview(buildSnapshotContext(snapshot))}
+                      className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => printCertificate(previewRef.current)}
+                      className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                    >
+                      Print
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportCertificatePdf(previewRef.current, `history-${snapshot.id}`)}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    >
+                      PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportCertificateDocx(buildSnapshotContext(snapshot), `history-${snapshot.id}`)}
+                      className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                    >
+                      DOCX
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4">
           <p className="text-sm font-medium text-slate-500">স্থায়ী অনুসন্ধান</p>
           <h3 className="mt-1 text-2xl font-bold text-slate-900">ব্যক্তি খুঁজুন</h3>
@@ -682,6 +830,55 @@ export function PersonManagement({
         )}
       </section>
 
+      {historyPreview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="certificate-preview-modal flex h-[95vh] w-full max-w-[1300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="no-print flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Certificate History Preview</p>
+                <h3 className="text-xl font-bold text-slate-900">ভবিষ্যৎ স্ন্যাপশট</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => printCertificate(previewRef.current)}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportCertificatePdf(previewRef.current, `history-preview`)}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  Save PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportCertificateDocx(historyPreview, `history-preview`)}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                >
+                  Save DOCX
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryPreview(null)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="certificate-print-shell flex-1 overflow-auto bg-slate-100 p-6">
+              <div ref={previewRef} className="certificate-preview-inner mx-auto w-full max-w-[210mm]">
+                {renderCertificate(historyPreview.certificateType, historyPreview)}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {previewPerson && previewContext ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="certificate-preview-modal flex h-[95vh] w-full max-w-[1300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -691,6 +888,13 @@ export function PersonManagement({
                 <h3 className="text-xl font-bold text-slate-900">উত্তরাধিকার/ওয়ারিশ সনদ</h3>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleFinalizeSnapshot()}
+                  className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                >
+                  Finalize Snapshot
+                </button>
                 <button
                   type="button"
                   onClick={() => printCertificate(previewRef.current)}

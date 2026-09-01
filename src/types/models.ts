@@ -68,8 +68,10 @@ export interface CertificateSnapshot {
   chairmanMobile: string
   certificateDate: string
   smarakPrefix: string
+  smarakSerial: string
   templateVersion: string
   qrPayload: string
+  configuration: Record<string, string | number | boolean | null>
   createdAt: string
   updatedAt: string
 }
