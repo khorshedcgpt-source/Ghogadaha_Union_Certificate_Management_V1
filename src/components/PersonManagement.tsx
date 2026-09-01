@@ -1,5 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { DEFAULT_UNION_SETTINGS } from '../db'
+import { renderCertificate } from '../lib/certificateTemplates'
+import {
+  exportCertificateDocx,
+  exportCertificatePdf,
+  generateQrDataUrl,
+  printCertificate,
+} from '../lib/exporters'
+import type { CertificateTemplateContext } from '../types/certificate'
 import type { Person, Village, Ward } from '../types/models'
 
 interface PersonManagementProps {
@@ -29,6 +38,9 @@ export function PersonManagement({
 }: PersonManagementProps) {
   const selectedWard = draft.ward ?? 1
   const [villageSearch, setVillageSearch] = useState('')
+  const [previewPerson, setPreviewPerson] = useState<Person | null>(null)
+  const [previewContext, setPreviewContext] = useState<CertificateTemplateContext | null>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
 
   const wardMemberName = useMemo(
     () => wards.find((ward) => ward.wardNumber === selectedWard)?.memberName ?? '',
@@ -53,6 +65,77 @@ export function PersonManagement({
     { label: 'জাতীয় পরিচয়পত্র / জন্ম নিবন্ধন নম্বর', value: draft.nidOrBirthRegistration },
   ].filter((entry) => entry.value && entry.value.trim().length > 0)
 
+  useEffect(() => {
+    if (!previewPerson) {
+      setPreviewContext(null)
+      return
+    }
+
+    let isActive = true
+
+    const preparePreview = async () => {
+      const settings = DEFAULT_UNION_SETTINGS
+      const selectedWardData = wards.find((ward) => ward.wardNumber === previewPerson.ward)?.memberName ?? ''
+      const qrPayload = [
+        'heir',
+        previewPerson.name ?? '',
+        previewPerson.ward ?? '',
+        previewPerson.village ?? '',
+        new Date().toISOString(),
+      ].join('|')
+
+      const context: CertificateTemplateContext = {
+        person: previewPerson,
+        settings,
+        selectedWard: wards.find((ward) => ward.wardNumber === previewPerson.ward),
+        wardMemberName: selectedWardData,
+        certificateType: 'heir',
+        certificateDate: new Date().toISOString(),
+        smarakPrefix: 'ঘো.ইউ.পি/কুড়ি/সদর/',
+        smarakSerial: '০০১',
+        qrPayload,
+        heirs: [
+          {
+            id: 'heir-1',
+            name: 'মো. জাহিদুল ইসলাম',
+            relationship: 'পুত্র',
+            nidOrBirthRegistration: '1998123456789',
+            comment: 'প্রথম পক্ষের সন্তান',
+          },
+          {
+            id: 'heir-2',
+            name: 'মো. রিনা খাতুন',
+            relationship: 'কন্যা',
+            nidOrBirthRegistration: '2001123456789',
+            comment: 'দ্বিতীয় পক্ষের সন্তান',
+          },
+          {
+            id: 'heir-3',
+            name: 'মো. সাইফুল ইসলাম',
+            relationship: 'পুত্র',
+            nidOrBirthRegistration: '',
+            comment: 'প্রথম পক্ষের সন্তান',
+          },
+        ],
+      }
+
+      const qrDataUrl = await generateQrDataUrl(qrPayload)
+
+      if (isActive) {
+        setPreviewContext({
+          ...context,
+          qrDataUrl,
+        })
+      }
+    }
+
+    void preparePreview()
+
+    return () => {
+      isActive = false
+    }
+  }, [previewPerson, wards])
+
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -67,6 +150,15 @@ export function PersonManagement({
     })
 
     onDraftChange({ photo: dataUrl })
+  }
+
+  const openPreview = (person: Person) => {
+    setPreviewPerson(person)
+  }
+
+  const closePreview = () => {
+    setPreviewPerson(null)
+    setPreviewContext(null)
   }
 
   return (
@@ -258,6 +350,13 @@ export function PersonManagement({
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    onClick={() => openPreview(person)}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    প্রিভিউ
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onResume(person)}
                     className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
                   >
@@ -276,6 +375,55 @@ export function PersonManagement({
           </div>
         )}
       </section>
+
+      {previewPerson && previewContext ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="certificate-preview-modal flex h-[95vh] w-full max-w-[1300px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="no-print flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Certificate Preview</p>
+                <h3 className="text-xl font-bold text-slate-900">উত্তরাধিকার/ওয়ারিশ সনদ</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => printCertificate(previewRef.current)}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportCertificatePdf(previewRef.current, `certificate-${previewPerson.id}`)}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  Save PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exportCertificateDocx(previewContext, `certificate-${previewPerson.id}`)}
+                  className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                >
+                  Save DOCX
+                </button>
+                <button
+                  type="button"
+                  onClick={closePreview}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="certificate-print-shell flex-1 overflow-auto bg-slate-100 p-6">
+              <div ref={previewRef} className="certificate-preview-inner mx-auto w-full max-w-[210mm]">
+                {renderCertificate('heir', previewContext)}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
